@@ -20,19 +20,15 @@ jobs:
 
       - name: Locate and Link AAPT2
         run: |
-          # Cari lokasi aapt2 di dalam Android SDK bawaan GitHub Runner
           AAPT2_PATH=$(find $ANDROID_HOME/build-tools -name aapt2 -type f | sort -r | head -n 1)
-          if [ -z "$AAPT2_PATH" ]; then
-            echo "AAPT2 gak ketemu, brooohhh!"
-            exit 1
-          fi
-          echo "Pake AAPT2 dari: $AAPT2_PATH"
-          # Bikin symbolic link biar bisa dipanggil cuma 'aapt2'
+          if [ -z "$AAPT2_PATH" ]; then exit 1; fi
           sudo ln -s "$AAPT2_PATH" /usr/local/bin/aapt2
 
-      - name: Create Temporary Clean XML
+      - name: Prepare Android Resource Folder
         run: |
-          cat <<EOF > temp_clean.xml
+          # aapt2 butuh struktur folder res/drawable/
+          mkdir -p res/drawable
+          cat <<EOF > res/drawable/temp_clean.xml
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="24dp"
               android:height="24dp"
@@ -46,15 +42,19 @@ jobs:
 
       - name: Compile to Binary XML
         run: |
-          mkdir -p output
-          # Compile ke format .flat
-          aapt2 compile temp_clean.xml -o output/
+          mkdir -p output_compiled
+          # Compile folder res/
+          aapt2 compile --dir res/ -o output_compiled/
           
-          # Link jadi file APK sementara (pake --proto-format biar strukturnya pas)
-          aapt2 link -o final_res.apk output/drawable_temp_clean.xml.flat --manifest <(echo '<manifest package="com.example.temp"/>')
+          # Link jadi APK sementara
+          aapt2 link -o final_res.apk output_compiled/*.flat --manifest <(echo '<manifest package="com.example.temp"/>')
           
-          # Ekstrak file binary-nya (biasanya di res/drawable/...)
-          unzip -p final_res.apk res/drawable/temp_clean.xml > ic_crdroid_logo.xml
+          # Cek isi APK buat debugging (liat path aslinya)
+          unzip -l final_res.apk
+          
+          # Ekstrak file binary. aapt2 biasanya naruh di res/drawable/ atau res/drawable-v4/
+          # Kita pake wildcard biar aman
+          unzip -p final_res.apk "res/drawable*/temp_clean.xml" > ic_crdroid_logo.xml
 
       - name: Commit and Push
         run: |
@@ -63,8 +63,8 @@ jobs:
           git add ic_crdroid_logo.xml
           
           if git diff --staged --quiet; then
-            echo "Gak ada perubahan, mungkin path-nya sama."
+            echo "Gak ada perubahan."
           else
-            git commit -m "Update logo to Binary XML format via AAPT2"
+            git commit -m "Update logo to Binary XML format (Fixed Path)"
             git push
           fi
