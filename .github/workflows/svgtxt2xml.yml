@@ -18,15 +18,20 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Setup Android SDK Tools
+      - name: Locate and Link AAPT2
         run: |
-          # Ambil aapt2 buat nge-compile XML ke binary
-          sudo apt-get update
-          sudo apt-get install -y aapt2
+          # Cari lokasi aapt2 di dalam Android SDK bawaan GitHub Runner
+          AAPT2_PATH=$(find $ANDROID_HOME/build-tools -name aapt2 -type f | sort -r | head -n 1)
+          if [ -z "$AAPT2_PATH" ]; then
+            echo "AAPT2 gak ketemu, brooohhh!"
+            exit 1
+          fi
+          echo "Pake AAPT2 dari: $AAPT2_PATH"
+          # Bikin symbolic link biar bisa dipanggil cuma 'aapt2'
+          sudo ln -s "$AAPT2_PATH" /usr/local/bin/aapt2
 
       - name: Create Temporary Clean XML
         run: |
-          # Bikin template XML teks biasa
           cat <<EOF > temp_clean.xml
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="24dp"
@@ -41,16 +46,15 @@ jobs:
 
       - name: Compile to Binary XML
         run: |
-          # 1. Compile file mentah jadi .flat
-          aapt2 compile temp_clean.xml -o ./output/
+          mkdir -p output
+          # Compile ke format .flat
+          aapt2 compile temp_clean.xml -o output/
           
-          # 2. Link file .flat jadi binary XML beneran
-          # Kita pakai trik 'link' supaya dapet format binary yang bisa dibaca Android
-          aapt2 link --proto-format -o final_res.apk ./output/drawable_temp_clean.xml.flat
+          # Link jadi file APK sementara (pake --proto-format biar strukturnya pas)
+          aapt2 link -o final_res.apk output/drawable_temp_clean.xml.flat --manifest <(echo '<manifest package="com.example.temp"/>')
           
-          # 3. Ekstrak file binary dari dalam paket (biasanya di root atau res/)
-          unzip -p final_res.apk res/drawable/temp_clean.xml > ic_crdroid_logo.xml || \
-          unzip -p final_res.apk temp_clean.xml > ic_crdroid_logo.xml
+          # Ekstrak file binary-nya (biasanya di res/drawable/...)
+          unzip -p final_res.apk res/drawable/temp_clean.xml > ic_crdroid_logo.xml
 
       - name: Commit and Push
         run: |
@@ -59,8 +63,8 @@ jobs:
           git add ic_crdroid_logo.xml
           
           if git diff --staged --quiet; then
-            echo "Gak ada perubahan."
+            echo "Gak ada perubahan, mungkin path-nya sama."
           else
-            git commit -m "Update logo to Binary XML format"
+            git commit -m "Update logo to Binary XML format via AAPT2"
             git push
           fi
