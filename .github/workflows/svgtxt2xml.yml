@@ -1,0 +1,35 @@
+name: Replace crDroid Logo Path
+
+on:
+  workflow_dispatch:
+    inputs:
+      new_path_data:
+        description: 'Paste pathData baru di sini (isi dari android:pathData)'
+        required: true
+        type: string
+
+jobs:
+  replace-path:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Update XML File
+        run: |
+          # Path ke file logo lo (sesuaikan foldernya kalau bukan di root)
+          TARGET_FILE="ic_crdroid_logo.xml"
+          
+          # Gunakan sed untuk replace isi di dalam android:pathData="..."
+          # Kita pake pembatas | di sed karena pathData biasanya mengandung /
+          sed -i "s|android:pathData=\"[^\"]*\"|android:pathData=\"${{ github.event.inputs.new_path_data }}\"|g" $TARGET_FILE
+          
+          echo "Berhasil update pathData di $TARGET_FILE"
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add ic_crdroid_logo.xml
+          git commit -m "Update logo pathData via GitHub Action"
+          git push
