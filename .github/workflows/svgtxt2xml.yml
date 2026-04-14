@@ -1,4 +1,4 @@
-name: Replace crDroid Logo Path
+name: Replace crDroid Logo Path (Binary Format)
 
 on:
   workflow_dispatch:
@@ -8,47 +8,49 @@ on:
         required: true
         type: string
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+permissions:
+  contents: write
 
 jobs:
-  replace-path:
+  build-binary-xml:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Update XML File (Binary Mode)
-        shell: python
+      - name: Setup Android SDK Tools
         run: |
-          import os
-          import re
+          # Ambil aapt2 buat nge-compile XML ke binary
+          sudo apt-get update
+          sudo apt-get install -y aapt2
 
-          target_file = "ic_crdroid_logo.xml"
-          # Ambil input dan bersihkan dari karakter whitespace/newline
-          new_path = r"""${{ github.event.inputs.new_path_data }}""".strip().replace('\n', '').replace('\r', '')
+      - name: Create Temporary Clean XML
+        run: |
+          # Bikin template XML teks biasa
+          cat <<EOF > temp_clean.xml
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="24dp"
+              android:height="24dp"
+              android:viewportWidth="24"
+              android:viewportHeight="24">
+              <path
+                  android:fillColor="#FF000000"
+                  android:pathData="${{ github.event.inputs.new_path_data }}" />
+          </vector>
+          EOF
+
+      - name: Compile to Binary XML
+        run: |
+          # 1. Compile file mentah jadi .flat
+          aapt2 compile temp_clean.xml -o ./output/
           
-          if os.path.exists(target_file):
-              # Baca file dalam mode binary (rb) buat ngehindarin UnicodeDecodeError
-              with open(target_file, 'rb') as f:
-                  content_bytes = f.read()
-              
-              # Convert ke string, abaikan karakter yang gak bisa didecode (errors='ignore')
-              content = content_bytes.decode('utf-8', errors='ignore')
-              
-              # Regex buat cari android:pathData="..." dan ganti isinya
-              pattern = r'android:pathData="[^"]*"'
-              replacement = f'android:pathData="{new_path}"'
-              
-              new_content = re.sub(pattern, replacement, content)
-              
-              # Tulis balik ke file dalam format utf-8 yang bersih
-              with open(target_file, 'w', encoding='utf-8') as f:
-                  f.write(new_content)
-              print(f"Berhasil update {target_file} dan bersihkan karakter aneh.")
-          else:
-              print(f"File {target_file} gak ketemu!")
-              exit(1)
+          # 2. Link file .flat jadi binary XML beneran
+          # Kita pakai trik 'link' supaya dapet format binary yang bisa dibaca Android
+          aapt2 link --proto-format -o final_res.apk ./output/drawable_temp_clean.xml.flat
+          
+          # 3. Ekstrak file binary dari dalam paket (biasanya di root atau res/)
+          unzip -p final_res.apk res/drawable/temp_clean.xml > ic_crdroid_logo.xml || \
+          unzip -p final_res.apk temp_clean.xml > ic_crdroid_logo.xml
 
       - name: Commit and Push
         run: |
@@ -57,8 +59,8 @@ jobs:
           git add ic_crdroid_logo.xml
           
           if git diff --staged --quiet; then
-            echo "Gak ada perubahan, path mungkin sama."
+            echo "Gak ada perubahan."
           else
-            git commit -m "Update logo pathData via GitHub Action (Fix Encoding)"
+            git commit -m "Update logo to Binary XML format"
             git push
           fi
