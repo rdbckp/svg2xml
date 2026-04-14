@@ -4,9 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       new_path_data:
-        description: 'Paste pathData baru di sini (isi dari android:pathData)'
+        description: 'Paste pathData baru di sini'
         required: true
         type: string
+
+env:
+  # Paksa pake Node 24 biar warning-nya ilang
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   replace-path:
@@ -15,26 +19,43 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Update XML File
+      - name: Update XML File with Python
+        shell: python
         run: |
-          # Path ke file logo lo (sesuaikan foldernya kalau bukan di root)
-          TARGET_FILE="ic_crdroid_logo.xml"
+          import os
+          import re
+
+          target_file = "ic_crdroid_logo.xml"
+          new_path = r"""${{ github.event.inputs.new_path_data }}"""
           
-          # Gunakan sed untuk replace isi di dalam android:pathData="..."
-          # Kita pake pembatas | di sed karena pathData biasanya mengandung /
-          sed -i "s|android:pathData=\"[^\"]*\"|android:pathData=\"${{ github.event.inputs.new_path_data }}\"|g" $TARGET_FILE
-          
-          echo "Berhasil update pathData di $TARGET_FILE"
+          # Bersihkan path dari enter/spasi berlebih kalo ada
+          new_path = new_path.strip().replace('\n', '').replace('\r', '')
+
+          if os.path.exists(target_file):
+              with open(target_file, 'r') as f:
+                  content = f.read()
+              
+              # Regex buat cari android:pathData="..." dan ganti isinya
+              pattern = r'android:pathData="[^"]*"'
+              replacement = f'android:pathData="{new_path}"'
+              
+              new_content = re.sub(pattern, replacement, content)
+              
+              with open(target_file, 'w') as f:
+                  f.write(new_content)
+              print(f"Berhasil update {target_file}")
+          else:
+              print(f"File {target_file} gak ketemu!")
+              exit(1)
 
       - name: Commit and Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add .
+          git add ic_crdroid_logo.xml
           
-          # Cek dulu ada perubahan gak, biar gak error "nothing to commit"
           if git diff --staged --quiet; then
-            echo "Aman bro, gak ada perubahan yang perlu di-commit."
+            echo "Gak ada perubahan, path mungkin sama."
           else
             git commit -m "Update logo pathData via GitHub Action"
             git push
