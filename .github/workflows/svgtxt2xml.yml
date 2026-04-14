@@ -18,15 +18,18 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Locate and Link AAPT2
+      - name: Locate Android Tools
         run: |
+          # Cari AAPT2
           AAPT2_PATH=$(find $ANDROID_HOME/build-tools -name aapt2 -type f | sort -r | head -n 1)
-          if [ -z "$AAPT2_PATH" ]; then exit 1; fi
           sudo ln -s "$AAPT2_PATH" /usr/local/bin/aapt2
+          
+          # Cari android.jar (penting buat definisi atribut)
+          ANDROID_JAR=$(find $ANDROID_HOME/platforms -name android.jar | sort -r | head -n 1)
+          echo "ANDROID_JAR=$ANDROID_JAR" >> $GITHUB_ENV
 
       - name: Prepare Android Resource Folder
         run: |
-          # aapt2 butuh struktur folder res/drawable/
           mkdir -p res/drawable
           cat <<EOF > res/drawable/temp_clean.xml
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
@@ -43,17 +46,15 @@ jobs:
       - name: Compile to Binary XML
         run: |
           mkdir -p output_compiled
-          # Compile folder res/
           aapt2 compile --dir res/ -o output_compiled/
           
-          # Link jadi APK sementara
-          aapt2 link -o final_res.apk output_compiled/*.flat --manifest <(echo '<manifest package="com.example.temp"/>')
+          # LINK dengan menyertakan android.jar (-I)
+          aapt2 link -I ${{ env.ANDROID_JAR }} \
+            -o final_res.apk \
+            output_compiled/*.flat \
+            --manifest <(echo '<manifest package="com.example.temp"/>')
           
-          # Cek isi APK buat debugging (liat path aslinya)
-          unzip -l final_res.apk
-          
-          # Ekstrak file binary. aapt2 biasanya naruh di res/drawable/ atau res/drawable-v4/
-          # Kita pake wildcard biar aman
+          # Ekstrak file binary
           unzip -p final_res.apk "res/drawable*/temp_clean.xml" > ic_crdroid_logo.xml
 
       - name: Commit and Push
@@ -65,6 +66,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "Gak ada perubahan."
           else
-            git commit -m "Update logo to Binary XML format (Fixed Path)"
+            git commit -m "Update logo to Binary XML format (Fixed Attributes)"
             git push
           fi
