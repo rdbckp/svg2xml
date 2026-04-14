@@ -9,7 +9,6 @@ on:
         type: string
 
 env:
-  # Paksa pake Node 24 biar warning-nya ilang
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -19,21 +18,23 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Update XML File with Python
+      - name: Update XML File (Binary Mode)
         shell: python
         run: |
           import os
           import re
 
           target_file = "ic_crdroid_logo.xml"
-          new_path = r"""${{ github.event.inputs.new_path_data }}"""
+          # Ambil input dan bersihkan dari karakter whitespace/newline
+          new_path = r"""${{ github.event.inputs.new_path_data }}""".strip().replace('\n', '').replace('\r', '')
           
-          # Bersihkan path dari enter/spasi berlebih kalo ada
-          new_path = new_path.strip().replace('\n', '').replace('\r', '')
-
           if os.path.exists(target_file):
-              with open(target_file, 'r') as f:
-                  content = f.read()
+              # Baca file dalam mode binary (rb) buat ngehindarin UnicodeDecodeError
+              with open(target_file, 'rb') as f:
+                  content_bytes = f.read()
+              
+              # Convert ke string, abaikan karakter yang gak bisa didecode (errors='ignore')
+              content = content_bytes.decode('utf-8', errors='ignore')
               
               # Regex buat cari android:pathData="..." dan ganti isinya
               pattern = r'android:pathData="[^"]*"'
@@ -41,9 +42,10 @@ jobs:
               
               new_content = re.sub(pattern, replacement, content)
               
-              with open(target_file, 'w') as f:
+              # Tulis balik ke file dalam format utf-8 yang bersih
+              with open(target_file, 'w', encoding='utf-8') as f:
                   f.write(new_content)
-              print(f"Berhasil update {target_file}")
+              print(f"Berhasil update {target_file} dan bersihkan karakter aneh.")
           else:
               print(f"File {target_file} gak ketemu!")
               exit(1)
@@ -57,6 +59,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "Gak ada perubahan, path mungkin sama."
           else
-            git commit -m "Update logo pathData via GitHub Action"
+            git commit -m "Update logo pathData via GitHub Action (Fix Encoding)"
             git push
           fi
