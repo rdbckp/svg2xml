@@ -30,6 +30,12 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add ic_crdroid_logo.xml
-          git commit -m "Update logo pathData via GitHub Action"
-          git push
+          git add .
+          
+          # Cek dulu ada perubahan gak, biar gak error "nothing to commit"
+          if git diff --staged --quiet; then
+            echo "Aman bro, gak ada perubahan yang perlu di-commit."
+          else
+            git commit -m "Update logo pathData via GitHub Action"
+            git push
+          fi
