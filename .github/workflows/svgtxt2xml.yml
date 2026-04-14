@@ -20,18 +20,18 @@ jobs:
 
       - name: Locate Android Tools
         run: |
-          # Cari AAPT2
           AAPT2_PATH=$(find $ANDROID_HOME/build-tools -name aapt2 -type f | sort -r | head -n 1)
           sudo ln -s "$AAPT2_PATH" /usr/local/bin/aapt2
           
-          # Cari android.jar (penting buat definisi atribut)
           ANDROID_JAR=$(find $ANDROID_HOME/platforms -name android.jar | sort -r | head -n 1)
           echo "ANDROID_JAR=$ANDROID_JAR" >> $GITHUB_ENV
 
       - name: Prepare Android Resource Folder
         run: |
           mkdir -p res/drawable
+          # Pastikan format XML mentahnya bersih
           cat <<EOF > res/drawable/temp_clean.xml
+          <?xml version="1.0" encoding="utf-8"?>
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="24dp"
               android:height="24dp"
@@ -43,18 +43,23 @@ jobs:
           </vector>
           EOF
 
-      - name: Compile to Binary XML
+      - name: Build Genuine Binary XML
         run: |
           mkdir -p output_compiled
+          # 1. Compile ke .flat
           aapt2 compile --dir res/ -o output_compiled/
           
-          # LINK dengan menyertakan android.jar (-I)
+          # 2. Link jadi APK (tanpa proto-format)
           aapt2 link -I ${{ env.ANDROID_JAR }} \
-            -o final_res.apk \
+            -o intermediate.apk \
             output_compiled/*.flat \
             --manifest <(echo '<manifest package="com.example.temp"/>')
           
-          # Ekstrak file binary
+          # 3. Paksa convert ke format Binary XML (bukan protobuf)
+          # Ini trik supaya strukturnya 'jadul' tapi bener buat Android
+          aapt2 convert -o final_res.apk intermediate.apk
+          
+          # 4. Ekstrak
           unzip -p final_res.apk "res/drawable*/temp_clean.xml" > ic_crdroid_logo.xml
 
       - name: Commit and Push
@@ -66,6 +71,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "Gak ada perubahan."
           else
-            git commit -m "Update logo to Binary XML format (Fixed Attributes)"
+            git commit -m "Update logo to Genuine Binary XML"
             git push
           fi
